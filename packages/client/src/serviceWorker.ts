@@ -39,3 +39,66 @@ precacheAndRoute(
     }
   }),
 );
+
+// ============================================================
+// Push Notification Support
+// ============================================================
+
+/**
+ * Handle incoming push events from the server's pushd service.
+ * The payload format from Revolt/Stoat pushd is a JSON object
+ * with fields like: author, body, content, icon, tag, url, channel_id
+ */
+self.addEventListener("push", (event: PushEvent) => {
+  if (!event.data) return;
+
+  try {
+    const data = event.data.json();
+
+    const title = data.author ?? "New Message";
+    const options: NotificationOptions = {
+      body: data.body ?? data.content ?? "You have a new message",
+      icon: data.icon ?? "/assets/icons/android-chrome-192x192.png",
+      badge: "/assets/icons/monochrome.png",
+      tag: data.tag ?? data.channel_id ?? "default",
+      data: {
+        url: data.url ?? "/",
+        channel_id: data.channel_id,
+      },
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch {
+    // Fallback for non-JSON push data
+    const text = event.data?.text() ?? "You have a new message";
+    event.waitUntil(
+      self.registration.showNotification("New Message", {
+        body: text,
+      }),
+    );
+  }
+});
+
+/**
+ * Handle notification clicks - focus existing window or open new one
+ */
+self.addEventListener("notificationclick", (event: NotificationEvent) => {
+  event.notification.close();
+
+  const url = event.notification.data?.url ?? "/";
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clientList) => {
+        // Try to focus an existing app window
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin) && "focus" in client) {
+            return client.focus();
+          }
+        }
+        // No existing window found, open a new one
+        return self.clients.openWindow(url);
+      }),
+  );
+});
